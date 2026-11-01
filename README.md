@@ -3,7 +3,7 @@
 ScriptHookDotNet script that recolors the waypoint by episode:
 GTA IV = steel blue, TLAD = blood red, TBOGT = hot pink.
 
-Install: install ScriptHookDotNet, then copy `scripts/EpisodeWaypointColor.cs` to `<GTA IV>/scripts/`.
+Install: install ScriptHookDotNet, then copy `EpisodeWaypointColor.cs` to `<GTA IV>/scripts/`.
 On first launch it creates `EpisodeWaypointColor.ini` beside the script:
 
 ```
