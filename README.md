@@ -8,7 +8,8 @@ On first launch it creates `EpisodeWaypointColor.ini` beside the script:
 
 ```
 [General]
-UpdateIntervalMs=500
+UpdateIntervalMs=250
+Debug=false
 [Colors]
 GTAIV=4FA3E0FF
 TLAD=C8102EFF
@@ -17,3 +18,6 @@ TBOGT=FF2FB9FF
 Colors are `RRGGBBAA` hex. Edit the file and restart the game (or reload scripts) to apply. Delete it to regenerate defaults.
 
 Untested in-game; if custom colors don't show, the native may only accept preset indexes.
+
+Troubleshooting: set `Debug=true`, place a waypoint, and check the console (`~`). It prints whether the waypoint was found and the color set vs. read back.
+A color of 1-2 digits (e.g. `TLAD=9`) uses a preset index instead (0 white, 1 dark red, 3 cyan, 5 yellow, 7 purple, 9 red, 13 turquoise...).

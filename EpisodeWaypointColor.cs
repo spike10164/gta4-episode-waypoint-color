@@ -18,13 +18,15 @@ namespace EpisodeWaypointColor {
       private int colorGTAIV;
       private int colorTLAD;
       private int colorTBOGT;
-      private Blip lastBlip = null;
-      private int lastColor = 0;
+      private bool debug = false;
+      private bool lastFound = false;
+      private bool reportedColor = false;
 
       public EpisodeWaypointColor() {
          LoadSettings();
          // the waypoint blip is recreated whenever the player sets a new one, so poll
-         this.Interval = Settings.GetValueInteger("UpdateIntervalMs", "General", 500);
+         this.Interval = Settings.GetValueInteger("UpdateIntervalMs", "General", 250);
+         debug = Settings.GetValueBool("Debug", "General", false);
          this.Tick += new EventHandler(this.EpisodeWaypointColor_Tick);
       }
 
@@ -32,7 +34,8 @@ namespace EpisodeWaypointColor {
       private void LoadSettings() {
          try {
             if (!File.Exists(Settings.Filename)) {
-               Settings.SetValue("UpdateIntervalMs", "General", 500);
+               Settings.SetValue("UpdateIntervalMs", "General", 250);
+               Settings.SetValue("Debug", "General", false);
                Settings.SetValue("GTAIV", "Colors", DefaultGTAIV);
                Settings.SetValue("TLAD", "Colors", DefaultTLAD);
                Settings.SetValue("TBOGT", "Colors", DefaultTBOGT);
@@ -55,6 +58,10 @@ namespace EpisodeWaypointColor {
          if (hex.Length == 8 && int.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value)) {
             return value;
          }
+         // a short number (0-14) is treated as a preset BlipColor index
+         if (hex.Length <= 2 && int.TryParse(hex, NumberStyles.Integer, CultureInfo.InvariantCulture, out value)) {
+            return value;
+         }
          Game.Console.Print("EpisodeWaypointColor: invalid color '" + hex + "' for " + name + ", using default");
          return int.Parse(defaultHex, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
       }
@@ -73,19 +80,24 @@ namespace EpisodeWaypointColor {
       private void EpisodeWaypointColor_Tick(object sender, EventArgs e) {
          try {
             Blip waypoint = Game.GetWaypoint();
-            if (waypoint == null || !waypoint.Exists()) {
-               lastBlip = null;
+            bool found = (waypoint != null);
+            if (debug && found != lastFound) {
+               Game.Console.Print("EpisodeWaypointColor: waypoint " + (found ? "found" : "gone") + ", episode " + Game.CurrentEpisode.ToString());
+               reportedColor = false;
+            }
+            lastFound = found;
+            if (!found) {
                return;
             }
 
+            // applied every tick because the game may reset the waypoint color
             int color = GetEpisodeColor();
-            if (lastBlip != null && lastBlip.Equals(waypoint) && color == lastColor) {
-               return;
-            }
-
             waypoint.Color = (BlipColor)color;
-            lastBlip = waypoint;
-            lastColor = color;
+
+            if (debug && !reportedColor) {
+               reportedColor = true;
+               Game.Console.Print("EpisodeWaypointColor: set " + color.ToString("X8") + ", game reports " + ((int)waypoint.Color).ToString("X8"));
+            }
          } catch (Exception ex) {
             Game.Console.Print("EpisodeWaypointColor error: " + ex.Message);
          }
