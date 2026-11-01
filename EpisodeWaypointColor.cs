@@ -39,7 +39,7 @@ namespace EpisodeWaypointColor {
                Settings.Save();
             }
          } catch (Exception ex) {
-            Game.Log("EpisodeWaypointColor could not create ini: " + ex.Message);
+            Game.Console.Print("EpisodeWaypointColor could not create ini: " + ex.Message);
          }
          colorGTAIV = ReadColor("GTAIV", DefaultGTAIV);
          colorTLAD = ReadColor("TLAD", DefaultTLAD);
@@ -55,7 +55,7 @@ namespace EpisodeWaypointColor {
          if (hex.Length == 8 && int.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value)) {
             return value;
          }
-         Game.Log("EpisodeWaypointColor: invalid color '" + hex + "' for " + name + ", using default");
+         Game.Console.Print("EpisodeWaypointColor: invalid color '" + hex + "' for " + name + ", using default");
          return int.Parse(defaultHex, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
       }
 
@@ -87,7 +87,7 @@ namespace EpisodeWaypointColor {
             lastBlip = waypoint;
             lastColor = color;
          } catch (Exception ex) {
-            Game.Log("EpisodeWaypointColor error: " + ex.Message);
+            Game.Console.Print("EpisodeWaypointColor error: " + ex.Message);
          }
       }
    }
