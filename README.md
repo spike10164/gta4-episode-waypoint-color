@@ -10,7 +10,9 @@ On first launch it creates `EpisodeWaypointColor.ini` beside the script:
 [General]
 UpdateIntervalMs=250
 Debug=false
-ReplaceWaypoint=true
+Overlay=true
+HideOriginal=true
+OverlayIcon=Misc_Destination
 [Colors]
 GTAIV=4FA3E0FF
 TLAD=C8102EFF
@@ -23,4 +25,4 @@ Untested in-game; if custom colors don't show, the native may only accept preset
 Troubleshooting: set `Debug=true`, place a waypoint, and check the console (`~`). It prints whether the waypoint was found and the color set vs. read back.
 A color of 1-2 digits (e.g. `TLAD=9`) uses a preset index instead (0 white, 1 dark red, 3 cyan, 5 yellow, 7 purple, 9 red, 13 turquoise...).
 
-`ReplaceWaypoint=true` (experimental): GTA IV has no native to re-place a waypoint, so the mod deletes the game's waypoint blip and puts a recolored waypoint-icon blip at the same spot. It may not give the in-game GPS route; set `false` to only recolor the real waypoint.
+`Overlay=true` keeps the game's real waypoint (so the GPS route and removal still work) and draws a recolored blip on top using `OverlayIcon` (any `BlipIcon` name). It must differ from `Misc_Waypoint`, otherwise the mod can't tell its own blip from the real one. `HideOriginal` tries to hide the real blip on the map (`MapOnly`). The GPS route line is drawn by the game and stays green. `Overlay=false` just recolors the real waypoint.

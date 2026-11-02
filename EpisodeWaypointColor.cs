@@ -19,7 +19,10 @@ namespace EpisodeWaypointColor {
       private int colorTLAD;
       private int colorTBOGT;
       private bool debug = false;
-      private bool replaceWaypoint = true;
+      private bool overlay = true;
+      private bool hideOriginal = true;
+      private BlipIcon overlayIcon = BlipIcon.Misc_Destination;
+      private Blip realBlip = null;
       private Blip ownBlip = null;
       private int ownColor = 0;
 
@@ -28,7 +31,13 @@ namespace EpisodeWaypointColor {
          // the waypoint blip is recreated whenever the player sets a new one, so poll
          this.Interval = Settings.GetValueInteger("UpdateIntervalMs", "General", 250);
          debug = Settings.GetValueBool("Debug", "General", false);
-         replaceWaypoint = Settings.GetValueBool("ReplaceWaypoint", "General", true);
+         overlay = Settings.GetValueBool("Overlay", "General", true);
+         hideOriginal = Settings.GetValueBool("HideOriginal", "General", true);
+         try {
+            overlayIcon = (BlipIcon)Enum.Parse(typeof(BlipIcon), Settings.GetValueString("OverlayIcon", "General", "Misc_Destination"), true);
+         } catch (Exception) {
+            overlayIcon = BlipIcon.Misc_Destination;
+         }
          this.Tick += new EventHandler(this.EpisodeWaypointColor_Tick);
       }
 
@@ -38,7 +47,9 @@ namespace EpisodeWaypointColor {
             if (!File.Exists(Settings.Filename)) {
                Settings.SetValue("UpdateIntervalMs", "General", 250);
                Settings.SetValue("Debug", "General", false);
-               Settings.SetValue("ReplaceWaypoint", "General", true);
+               Settings.SetValue("Overlay", "General", true);
+               Settings.SetValue("HideOriginal", "General", true);
+               Settings.SetValue("OverlayIcon", "General", "Misc_Destination");
                Settings.SetValue("GTAIV", "Colors", DefaultGTAIV);
                Settings.SetValue("TLAD", "Colors", DefaultTLAD);
                Settings.SetValue("TBOGT", "Colors", DefaultTBOGT);
@@ -84,28 +95,32 @@ namespace EpisodeWaypointColor {
          if (debug) Game.Console.Print("EpisodeWaypointColor: " + text);
       }
 
+      private void RemoveOverlay() {
+         if (ownBlip != null && ownBlip.Exists()) ownBlip.Delete();
+         ownBlip = null;
+         realBlip = null;
+      }
+
       private void EpisodeWaypointColor_Tick(object sender, EventArgs e) {
          try {
+            // the overlay uses a different icon, so this only ever finds the real waypoint
             Blip waypoint = Game.GetWaypoint();
             int color = GetEpisodeColor();
 
             if (waypoint == null) {
-               // the player removed the waypoint, so remove our stand-in too
                if (ownBlip != null) {
-                  if (ownBlip.Exists()) ownBlip.Delete();
-                  ownBlip = null;
+                  RemoveOverlay();
                   Debug("waypoint removed");
                }
                return;
             }
 
-            if (!replaceWaypoint) {
+            if (!overlay) {
                waypoint.Color = (BlipColor)color;
                return;
             }
 
-            if (ownBlip != null && ownBlip.Exists() && ownBlip.Equals(waypoint)) {
-               // already our blip; only touch it when the episode color changed
+            if (ownBlip != null && ownBlip.Exists() && realBlip != null && realBlip.Equals(waypoint)) {
                if (color != ownColor) {
                   ownBlip.Color = (BlipColor)color;
                   ownColor = color;
@@ -113,17 +128,16 @@ namespace EpisodeWaypointColor {
                return;
             }
 
-            // a new waypoint set by the player: swap it for a recolored copy at the same spot
-            Vector3 pos = waypoint.Position;
-            if (ownBlip != null && ownBlip.Exists()) ownBlip.Delete();
-            waypoint.Delete();
-
-            ownBlip = Blip.AddBlip(pos);
-            ownBlip.Icon = BlipIcon.Misc_Waypoint;
+            // new or moved waypoint: draw a colored blip over it and keep the real one for GPS/removal
+            RemoveOverlay();
+            ownBlip = Blip.AddBlip(waypoint.Position);
+            ownBlip.Icon = overlayIcon;
             ownBlip.Color = (BlipColor)color;
             ownBlip.Name = "Waypoint";
+            if (hideOriginal) waypoint.Display = BlipDisplay.MapOnly;
+            realBlip = waypoint;
             ownColor = color;
-            Debug("replaced waypoint at " + pos.ToString() + ", color " + color.ToString("X8") + ", reads back " + ((int)ownBlip.Color).ToString("X8"));
+            Debug("overlay placed, color " + color.ToString("X8") + ", reads back " + ((int)ownBlip.Color).ToString("X8"));
          } catch (Exception ex) {
             Game.Console.Print("EpisodeWaypointColor error: " + ex.Message);
          }
