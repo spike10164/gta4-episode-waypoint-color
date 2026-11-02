@@ -19,14 +19,16 @@ namespace EpisodeWaypointColor {
       private int colorTLAD;
       private int colorTBOGT;
       private bool debug = false;
-      private bool lastFound = false;
-      private bool reportedColor = false;
+      private bool replaceWaypoint = true;
+      private Blip ownBlip = null;
+      private int ownColor = 0;
 
       public EpisodeWaypointColor() {
          LoadSettings();
          // the waypoint blip is recreated whenever the player sets a new one, so poll
          this.Interval = Settings.GetValueInteger("UpdateIntervalMs", "General", 250);
          debug = Settings.GetValueBool("Debug", "General", false);
+         replaceWaypoint = Settings.GetValueBool("ReplaceWaypoint", "General", true);
          this.Tick += new EventHandler(this.EpisodeWaypointColor_Tick);
       }
 
@@ -36,6 +38,7 @@ namespace EpisodeWaypointColor {
             if (!File.Exists(Settings.Filename)) {
                Settings.SetValue("UpdateIntervalMs", "General", 250);
                Settings.SetValue("Debug", "General", false);
+               Settings.SetValue("ReplaceWaypoint", "General", true);
                Settings.SetValue("GTAIV", "Colors", DefaultGTAIV);
                Settings.SetValue("TLAD", "Colors", DefaultTLAD);
                Settings.SetValue("TBOGT", "Colors", DefaultTBOGT);
@@ -77,27 +80,50 @@ namespace EpisodeWaypointColor {
          }
       }
 
+      private void Debug(string text) {
+         if (debug) Game.Console.Print("EpisodeWaypointColor: " + text);
+      }
+
       private void EpisodeWaypointColor_Tick(object sender, EventArgs e) {
          try {
             Blip waypoint = Game.GetWaypoint();
-            bool found = (waypoint != null);
-            if (debug && found != lastFound) {
-               Game.Console.Print("EpisodeWaypointColor: waypoint " + (found ? "found" : "gone") + ", episode " + Game.CurrentEpisode.ToString());
-               reportedColor = false;
-            }
-            lastFound = found;
-            if (!found) {
+            int color = GetEpisodeColor();
+
+            if (waypoint == null) {
+               // the player removed the waypoint, so remove our stand-in too
+               if (ownBlip != null) {
+                  if (ownBlip.Exists()) ownBlip.Delete();
+                  ownBlip = null;
+                  Debug("waypoint removed");
+               }
                return;
             }
 
-            // applied every tick because the game may reset the waypoint color
-            int color = GetEpisodeColor();
-            waypoint.Color = (BlipColor)color;
-
-            if (debug && !reportedColor) {
-               reportedColor = true;
-               Game.Console.Print("EpisodeWaypointColor: set " + color.ToString("X8") + ", game reports " + ((int)waypoint.Color).ToString("X8"));
+            if (!replaceWaypoint) {
+               waypoint.Color = (BlipColor)color;
+               return;
             }
+
+            if (ownBlip != null && ownBlip.Exists() && ownBlip.Equals(waypoint)) {
+               // already our blip; only touch it when the episode color changed
+               if (color != ownColor) {
+                  ownBlip.Color = (BlipColor)color;
+                  ownColor = color;
+               }
+               return;
+            }
+
+            // a new waypoint set by the player: swap it for a recolored copy at the same spot
+            Vector3 pos = waypoint.Position;
+            if (ownBlip != null && ownBlip.Exists()) ownBlip.Delete();
+            waypoint.Delete();
+
+            ownBlip = Blip.AddBlip(pos);
+            ownBlip.Icon = BlipIcon.Misc_Waypoint;
+            ownBlip.Color = (BlipColor)color;
+            ownBlip.Name = "Waypoint";
+            ownColor = color;
+            Debug("replaced waypoint at " + pos.ToString() + ", color " + color.ToString("X8") + ", reads back " + ((int)ownBlip.Color).ToString("X8"));
          } catch (Exception ex) {
             Game.Console.Print("EpisodeWaypointColor error: " + ex.Message);
          }
