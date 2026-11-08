@@ -12,13 +12,18 @@ On first launch it creates `EpisodeWaypointColor.ini` beside the script:
 UpdateIntervalMs=50
 Debug=false
 ArrivalRadius=15
+RemoveOnArrival=true
+RouteEnabled=true
+WaypointIcon=Misc_Waypoint
+WaypointName=Waypoint
 [Colors]
 GTAIV=4FA3E0FF
 TLAD=C8102EFF
 TBOGT=FF2FB9FF
 ```
 Colors are `RRGGBBAA` hex. Settings reload approximately once per second.
-Missing settings are added automatically without deleting your existing ini.
+The ini is auto-created on first start, and missing keys are appended to existing
+files automatically (no deletion needed).
 Legacy `Overlay`, `HideOriginal`, and `OverlayIcon` settings are no longer used.
 
 When a native waypoint is detected, the script creates its own marker at the same
@@ -36,6 +41,9 @@ The replacement stays until another waypoint is placed or you arrive within
 map-selected waypoint height may not match road height. Arrival removal is suspended
 while paused. Detection runs on the next script tick, not directly inside the map's
 click handler; an existing ini may retain a slower `UpdateIntervalMs`.
+
+`RemoveOnArrival`, `RouteEnabled`, `WaypointIcon`, `WaypointName`, and all color values
+are editable mid-session.
 
 This is not an exact replacement for the engine's waypoint bookkeeping. Native
 map-click cancellation, mission route priority, taxi destination selection, other
