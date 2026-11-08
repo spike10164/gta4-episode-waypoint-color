@@ -25,6 +25,8 @@ namespace EpisodeWaypointColor {
       private float arrivalRadius = 15.0f;
       private bool removeOnArrival = true;
       private bool routeEnabled = true;
+      private bool rainbowMode = false;
+      private int rainbowCycleMs = 2500;
       private BlipIcon waypointIcon = BlipIcon.Misc_Waypoint;
       private string waypointName = "Waypoint";
       private int lastSettingsCheck = 0;
@@ -113,6 +115,8 @@ namespace EpisodeWaypointColor {
          changed |= EnsureIniKey(lines, "General", "ArrivalRadius", "15", "; Remove fake waypoint when within this horizontal distance in meters (1-100).");
          changed |= EnsureIniKey(lines, "General", "RemoveOnArrival", "true", "; If false, waypoint only changes when a new waypoint is set/cleared.");
          changed |= EnsureIniKey(lines, "General", "RouteEnabled", "true", "; If true, enables GPS route on the fake waypoint.");
+         changed |= EnsureIniKey(lines, "General", "RainbowMode", "false", "; If true, colors cycle continuously instead of using per-episode colors.");
+         changed |= EnsureIniKey(lines, "General", "RainbowCycleMs", "2500", "; Full rainbow cycle duration in milliseconds (250-60000).");
          changed |= EnsureIniKey(lines, "General", "WaypointIcon", "Misc_Waypoint", "; Any BlipIcon enum name.");
          changed |= EnsureIniKey(lines, "General", "WaypointName", "Waypoint", "; Label shown on map/legend.");
          changed |= EnsureIniKey(lines, "Colors", "GTAIV", DefaultGTAIV, "; Episode color (RRGGBBAA hex or short preset index).");
@@ -139,6 +143,8 @@ namespace EpisodeWaypointColor {
          arrivalRadius = Settings.GetValueFloat("ArrivalRadius", "General", 15.0f);
          removeOnArrival = Settings.GetValueBool("RemoveOnArrival", "General", true);
          routeEnabled = Settings.GetValueBool("RouteEnabled", "General", true);
+         rainbowMode = Settings.GetValueBool("RainbowMode", "General", false);
+         rainbowCycleMs = Settings.GetValueInteger("RainbowCycleMs", "General", 2500);
          waypointName = Settings.GetValueString("WaypointName", "General", "Waypoint");
          if (waypointName == null || waypointName.Trim().Length == 0) waypointName = "Waypoint";
          string iconName = Settings.GetValueString("WaypointIcon", "General", "Misc_Waypoint");
@@ -151,6 +157,10 @@ namespace EpisodeWaypointColor {
          if (float.IsNaN(arrivalRadius) || float.IsInfinity(arrivalRadius) || arrivalRadius < 1.0f || arrivalRadius > 100.0f) {
             Game.Console.Print("EpisodeWaypointColor: ArrivalRadius must be 1-100 metres; using 15");
             arrivalRadius = 15.0f;
+         }
+         if (rainbowCycleMs < 250 || rainbowCycleMs > 60000) {
+            Game.Console.Print("EpisodeWaypointColor: RainbowCycleMs must be 250-60000; using 2500");
+            rainbowCycleMs = 2500;
          }
       }
 
@@ -182,6 +192,7 @@ namespace EpisodeWaypointColor {
       }
 
       private int GetEpisodeColor() {
+         if (rainbowMode) return GetRainbowColor(Environment.TickCount);
          switch (Game.CurrentEpisode) {
             case GameEpisode.TLAD:
                return colorTLAD;
@@ -194,6 +205,32 @@ namespace EpisodeWaypointColor {
 
       private void Debug(string text) {
          if (debug) Game.Console.Print("EpisodeWaypointColor: " + text);
+      }
+
+      private int ClampByte(int v) {
+         if (v < 0) return 0;
+         if (v > 255) return 255;
+         return v;
+      }
+
+      private int PackRgba(int r, int g, int b, int a) {
+         return ((ClampByte(r) & 255) << 24) | ((ClampByte(g) & 255) << 16) | ((ClampByte(b) & 255) << 8) | (ClampByte(a) & 255);
+      }
+
+      private int GetRainbowColor(int nowTick) {
+         float phase = (nowTick % rainbowCycleMs) / (float)rainbowCycleMs; // 0..1
+         float h = phase * 6.0f; // 0..6
+         float x = 1.0f - Math.Abs(h % 2.0f - 1.0f);
+         float r = 0.0f, g = 0.0f, b = 0.0f;
+
+         if (h < 1.0f) { r = 1.0f; g = x; b = 0.0f; }
+         else if (h < 2.0f) { r = x; g = 1.0f; b = 0.0f; }
+         else if (h < 3.0f) { r = 0.0f; g = 1.0f; b = x; }
+         else if (h < 4.0f) { r = 0.0f; g = x; b = 1.0f; }
+         else if (h < 5.0f) { r = x; g = 0.0f; b = 1.0f; }
+         else { r = 1.0f; g = 0.0f; b = x; }
+
+         return PackRgba((int)(r * 255.0f), (int)(g * 255.0f), (int)(b * 255.0f), 255);
       }
 
       private void RemoveWaypoint() {

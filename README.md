@@ -14,6 +14,8 @@ Debug=false
 ArrivalRadius=15
 RemoveOnArrival=true
 RouteEnabled=true
+RainbowMode=false
+RainbowCycleMs=2500
 WaypointIcon=Misc_Waypoint
 WaypointName=Waypoint
 [Colors]
@@ -44,6 +46,10 @@ click handler; an existing ini may retain a slower `UpdateIntervalMs`.
 
 `RemoveOnArrival`, `RouteEnabled`, `WaypointIcon`, `WaypointName`, and all color values
 are editable mid-session.
+
+`RainbowMode=true` makes the waypoint color cycle continuously. `RainbowCycleMs`
+controls how long one full cycle takes (250-60000). When rainbow mode is on, episode
+color keys are ignored until it is turned off.
 
 This is not an exact replacement for the engine's waypoint bookkeeping. Native
 map-click cancellation, mission route priority, taxi destination selection, other
