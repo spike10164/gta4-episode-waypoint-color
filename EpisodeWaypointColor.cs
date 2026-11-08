@@ -20,20 +20,36 @@ namespace EpisodeWaypointColor {
       private int colorTLAD;
       private int colorTBOGT;
       private bool debug = false;
-      private Blip ownBlip = null;
-      private int ownColor = 0;
+      private class SavedWaypoint {
+         public Blip Blip;
+         public Vector3 Position;
+         public int Color;
+         public bool Configured;
+         public BlipIcon Icon;
+         public string Name;
+         public bool Route;
+      }
+      private List<SavedWaypoint> waypoints = new List<SavedWaypoint>();
       private float arrivalRadius = 15.0f;
       private bool removeOnArrival = true;
       private bool routeEnabled = true;
       private bool rainbowMode = false;
       private int rainbowCycleMs = 2500;
       private BlipIcon waypointIcon = BlipIcon.Misc_Waypoint;
+      private BlipIcon iconGTAIV;
+      private BlipIcon iconTLAD;
+      private BlipIcon iconTBOGT;
+      private string colorPreset = "Episode";
+      private float hueStepDegrees = 18.0f;
+      private float selectionRadius = 10.0f;
+      private string logPath;
       private string waypointName = "Waypoint";
       private int lastSettingsCheck = 0;
       private DateTime settingsWriteTime;
       private int lastErrorTick = -10000;
 
       public EpisodeWaypointColor() {
+         logPath = Path.ChangeExtension(Settings.Filename, ".log");
          LoadSettings();
          // the waypoint blip is recreated whenever the player sets a new one, so poll
          this.Tick += new EventHandler(this.EpisodeWaypointColor_Tick);
@@ -113,18 +129,23 @@ namespace EpisodeWaypointColor {
          changed |= EnsureIniKey(lines, "General", "UpdateIntervalMs", "50", "; Tick interval in milliseconds (10-1000).");
          changed |= EnsureIniKey(lines, "General", "Debug", "false", "; Print debug messages to the in-game console.");
          changed |= EnsureIniKey(lines, "General", "ArrivalRadius", "15", "; Remove fake waypoint when within this horizontal distance in meters (1-100).");
-         changed |= EnsureIniKey(lines, "General", "RemoveOnArrival", "true", "; If false, waypoint only changes when a new waypoint is set/cleared.");
+         changed |= EnsureIniKey(lines, "General", "RemoveOnArrival", "true", "; If false, waypoints remain until selected again or removed by the engine.");
          changed |= EnsureIniKey(lines, "General", "RouteEnabled", "true", "; If true, enables GPS route on the fake waypoint.");
          changed |= EnsureIniKey(lines, "General", "RainbowMode", "false", "; If true, colors cycle continuously instead of using per-episode colors.");
          changed |= EnsureIniKey(lines, "General", "RainbowCycleMs", "2500", "; Full rainbow cycle duration in milliseconds (250-60000).");
          changed |= EnsureIniKey(lines, "General", "WaypointIcon", "Misc_Waypoint", "; Any BlipIcon enum name.");
          changed |= EnsureIniKey(lines, "General", "WaypointName", "Waypoint", "; Label shown on map/legend.");
+         changed |= EnsureIniKey(lines, "General", "SelectionRadius", "10", "; Clicking within this many horizontal meters of a saved waypoint removes it (1-100).");
+         changed |= EnsureIniKey(lines, "Icons", "GTAIV", "Default", "; BlipIcon enum name, or Default to use General/WaypointIcon.");
+         changed |= EnsureIniKey(lines, "Icons", "TLAD", "Default", null);
+         changed |= EnsureIniKey(lines, "Icons", "TBOGT", "Default", null);
+         changed |= EnsureIniKey(lines, "Colors", "Preset", "Episode", "; Episode (your colors below), Original, HighContrast, or Rainbow.");
+         changed |= EnsureIniKey(lines, "Colors", "HueStepDegrees", "18", "; Hue difference for each later waypoint (1-60). Achromatic base colors also gain a tint.");
          changed |= EnsureIniKey(lines, "Colors", "GTAIV", DefaultGTAIV, "; Episode color (RRGGBBAA hex or short preset index).");
          changed |= EnsureIniKey(lines, "Colors", "TLAD", DefaultTLAD, null);
          changed |= EnsureIniKey(lines, "Colors", "TBOGT", DefaultTBOGT, null);
 
          if (changed) File.WriteAllLines(path, lines.ToArray());
-         settingsWriteTime = File.GetLastWriteTimeUtc(path);
       }
 
       // Creates EpisodeWaypointColor.ini next to the script on first launch.
@@ -132,6 +153,7 @@ namespace EpisodeWaypointColor {
          try {
             MergeMissingKeys();
             Settings.Load();
+            settingsWriteTime = File.GetLastWriteTimeUtc(Settings.Filename);
          } catch (Exception ex) {
             Game.Console.Print("EpisodeWaypointColor could not create ini: " + ex.Message);
          }
@@ -147,13 +169,18 @@ namespace EpisodeWaypointColor {
          rainbowCycleMs = Settings.GetValueInteger("RainbowCycleMs", "General", 2500);
          waypointName = Settings.GetValueString("WaypointName", "General", "Waypoint");
          if (waypointName == null || waypointName.Trim().Length == 0) waypointName = "Waypoint";
-         string iconName = Settings.GetValueString("WaypointIcon", "General", "Misc_Waypoint");
-         try {
-            waypointIcon = (BlipIcon)Enum.Parse(typeof(BlipIcon), iconName, true);
-         } catch (Exception) {
-            Game.Console.Print("EpisodeWaypointColor: invalid WaypointIcon '" + iconName + "', using Misc_Waypoint");
-            waypointIcon = BlipIcon.Misc_Waypoint;
+         waypointIcon = ReadIcon("General", "WaypointIcon", BlipIcon.Misc_Waypoint);
+         iconGTAIV = ReadIcon("Icons", "GTAIV", waypointIcon);
+         iconTLAD = ReadIcon("Icons", "TLAD", waypointIcon);
+         iconTBOGT = ReadIcon("Icons", "TBOGT", waypointIcon);
+         colorPreset = Settings.GetValueString("Preset", "Colors", "Episode").Trim();
+         if (!PresetIs("Episode") && !PresetIs("Original") && !PresetIs("HighContrast") && !PresetIs("Rainbow")) {
+            Game.Console.Print("EpisodeWaypointColor: invalid Preset; using Episode");
+            colorPreset = "Episode";
          }
+         hueStepDegrees = ReadRange("Colors", "HueStepDegrees", 18.0f, 1.0f, 60.0f);
+         selectionRadius = ReadRange("General", "SelectionRadius", 10.0f, 1.0f, 100.0f);
+         for (int i = 0; i < waypoints.Count; i++) waypoints[i].Configured = false;
          if (float.IsNaN(arrivalRadius) || float.IsInfinity(arrivalRadius) || arrivalRadius < 1.0f || arrivalRadius > 100.0f) {
             Game.Console.Print("EpisodeWaypointColor: ArrivalRadius must be 1-100 metres; using 15");
             arrivalRadius = 15.0f;
@@ -162,6 +189,26 @@ namespace EpisodeWaypointColor {
             Game.Console.Print("EpisodeWaypointColor: RainbowCycleMs must be 250-60000; using 2500");
             rainbowCycleMs = 2500;
          }
+      }
+
+      private float ReadRange(string section, string key, float fallback, float min, float max) {
+         float value = Settings.GetValueFloat(key, section, fallback);
+         if (Finite(value) && value >= min && value <= max) return value;
+         Game.Console.Print("EpisodeWaypointColor: invalid " + key + "; using " + fallback);
+         return fallback;
+      }
+
+      private BlipIcon ReadIcon(string section, string key, BlipIcon fallback) {
+         string iconName = Settings.GetValueString(key, section, "Default").Trim();
+         if (string.Compare(iconName, "Default", true, CultureInfo.InvariantCulture) == 0) return fallback;
+         try {
+            BlipIcon icon = (BlipIcon)Enum.Parse(typeof(BlipIcon), iconName, true);
+            if (Enum.IsDefined(typeof(BlipIcon), icon)) return icon;
+         } catch (ArgumentException) {
+         } catch (OverflowException) {
+         }
+         Game.Console.Print("EpisodeWaypointColor: invalid icon '" + iconName + "' for " + section + "/" + key + "; using " + fallback);
+         return fallback;
       }
 
       private void ReloadSettings() {
@@ -184,7 +231,7 @@ namespace EpisodeWaypointColor {
             return value;
          }
          // a short number (0-14) is treated as a preset BlipColor index
-         if (hex.Length <= 2 && int.TryParse(hex, NumberStyles.Integer, CultureInfo.InvariantCulture, out value)) {
+         if (hex.Length <= 2 && int.TryParse(hex, NumberStyles.Integer, CultureInfo.InvariantCulture, out value) && value >= 0 && value <= 14) {
             return value;
          }
          Game.Console.Print("EpisodeWaypointColor: invalid color '" + hex + "' for " + name + ", using default");
@@ -192,7 +239,9 @@ namespace EpisodeWaypointColor {
       }
 
       private int GetEpisodeColor() {
-         if (rainbowMode) return GetRainbowColor(Environment.TickCount);
+         if (rainbowMode || PresetIs("Rainbow")) return GetRainbowColor(Environment.TickCount);
+         if (PresetIs("Original")) return 8;
+         if (PresetIs("HighContrast")) return PackRgba(255, 255, 0, 255);
          switch (Game.CurrentEpisode) {
             case GameEpisode.TLAD:
                return colorTLAD;
@@ -204,7 +253,23 @@ namespace EpisodeWaypointColor {
       }
 
       private void Debug(string text) {
-         if (debug) Game.Console.Print("EpisodeWaypointColor: " + text);
+         if (!debug) return;
+         Game.Console.Print("EpisodeWaypointColor: " + text);
+         try { File.AppendAllText(logPath, DateTime.Now.ToString("s") + " " + text + Environment.NewLine); }
+         catch (IOException ex) { Game.Console.Print("EpisodeWaypointColor could not write log: " + ex.Message); }
+         catch (UnauthorizedAccessException ex) { Game.Console.Print("EpisodeWaypointColor could not write log: " + ex.Message); }
+      }
+
+      private bool PresetIs(string name) {
+         return string.Compare(colorPreset, name, true, CultureInfo.InvariantCulture) == 0;
+      }
+
+      private BlipIcon GetEpisodeIcon() {
+         switch (Game.CurrentEpisode) {
+            case GameEpisode.TLAD: return iconTLAD;
+            case GameEpisode.TBOGT: return iconTBOGT;
+            default: return iconGTAIV;
+         }
       }
 
       private int ClampByte(int v) {
@@ -218,8 +283,14 @@ namespace EpisodeWaypointColor {
       }
 
       private int GetRainbowColor(int nowTick) {
-         float phase = (nowTick % rainbowCycleMs) / (float)rainbowCycleMs; // 0..1
-         float h = phase * 6.0f; // 0..6
+         int phaseTick = nowTick % rainbowCycleMs;
+         if (phaseTick < 0) phaseTick += rainbowCycleMs;
+         return HsvColor(phaseTick / (float)rainbowCycleMs, 1.0f, 1.0f, 255);
+      }
+
+      private int HsvColor(float hue, float saturation, float value, int alpha) {
+         hue -= (float)Math.Floor(hue);
+         float h = hue * 6.0f;
          float x = 1.0f - Math.Abs(h % 2.0f - 1.0f);
          float r = 0.0f, g = 0.0f, b = 0.0f;
 
@@ -230,15 +301,76 @@ namespace EpisodeWaypointColor {
          else if (h < 5.0f) { r = x; g = 0.0f; b = 1.0f; }
          else { r = 1.0f; g = 0.0f; b = x; }
 
-         return PackRgba((int)(r * 255.0f), (int)(g * 255.0f), (int)(b * 255.0f), 255);
+         float chroma = value * saturation;
+         float m = value - chroma;
+         return PackRgba((int)((r * chroma + m) * 255.0f), (int)((g * chroma + m) * 255.0f), (int)((b * chroma + m) * 255.0f), alpha);
       }
 
-      private void RemoveWaypoint() {
-         if (ownBlip != null && ownBlip.Exists()) {
-            ownBlip.RouteActive = false;
-            ownBlip.Delete();
+      private int VariantColor(int baseColor, int index) {
+         if (index == 0) return baseColor;
+         // Preset indices are not packed RGB; use approximate palette colors for variants only.
+         int[] palette = new int[] {
+            PackRgba(255,255,255,255), PackRgba(128,0,0,255), PackRgba(0,96,0,255),
+            PackRgba(0,255,255,255), PackRgba(128,128,128,255), PackRgba(255,255,0,255),
+            PackRgba(255,128,0,255), PackRgba(128,0,255,255), PackRgba(0,255,0,255),
+            PackRgba(255,0,0,255), PackRgba(255,128,128,255), PackRgba(255,192,128,255),
+            PackRgba(0,96,96,255), PackRgba(0,192,192,255), PackRgba(255,255,128,255)
+         };
+         int rgba = baseColor >= 0 && baseColor <= 14 ? palette[baseColor] : baseColor;
+         float r = ((rgba >> 24) & 255) / 255.0f;
+         float g = ((rgba >> 16) & 255) / 255.0f;
+         float b = ((rgba >> 8) & 255) / 255.0f;
+         float max = Math.Max(r, Math.Max(g, b));
+         float min = Math.Min(r, Math.Min(g, b));
+         float delta = max - min;
+         float hue = 0.0f;
+         if (delta > 0.0001f) {
+            if (max == r) hue = (g - b) / delta;
+            else if (max == g) hue = (b - r) / delta + 2.0f;
+            else hue = (r - g) / delta + 4.0f;
+            hue /= 6.0f;
          }
-         ownBlip = null;
+         float saturation = max > 0.0f ? delta / max : 0.0f;
+         if (delta < 0.0001f) {
+            saturation = 0.35f;
+            max = Math.Max(max, 0.35f);
+         }
+         // Small alternating offsets, then further shifts as the list grows.
+         int offset = (index + 1) / 2;
+         if (index % 2 == 0) offset = -offset;
+         return HsvColor(hue + offset * hueStepDegrees / 360.0f, saturation, max, rgba & 255);
+      }
+
+      private void DeleteBlip(Blip blip) {
+         int handle = ((GTA.@base.iHandleObject)blip).Handle;
+         if (!GTA.Native.Function.Call<bool>("DOES_BLIP_EXIST", handle)) return;
+         blip.RouteActive = false;
+         blip.Delete();
+         if (GTA.Native.Function.Call<bool>("DOES_BLIP_EXIST", handle))
+            throw new InvalidOperationException("Blip deletion failed for handle " + handle);
+      }
+
+      private void DeleteNativeWaypoint(Blip blip) {
+         GTA.Native.Function.Call("SET_THIS_SCRIPT_CAN_REMOVE_BLIPS_CREATED_BY_ANY_SCRIPT", true);
+         try { DeleteBlip(blip); }
+         finally { GTA.Native.Function.Call("SET_THIS_SCRIPT_CAN_REMOVE_BLIPS_CREATED_BY_ANY_SCRIPT", false); }
+      }
+
+      private void RemoveWaypoint(int index, string reason) {
+         DeleteBlip(waypoints[index].Blip);
+         waypoints.RemoveAt(index);
+         RefreshWaypoints();
+         Debug("removed waypoint " + (index + 1) + ": " + reason + "; remaining=" + waypoints.Count);
+      }
+
+      private void RefreshWaypoints() {
+         for (int i = 0; i < waypoints.Count; i++) waypoints[i].Configured = false;
+      }
+
+      private bool IsOwned(Blip blip) {
+         for (int i = 0; i < waypoints.Count; i++)
+            if (waypoints[i].Blip.Equals(blip)) return true;
+         return false;
       }
 
       private Blip FindNativeWaypoint() {
@@ -248,94 +380,108 @@ namespace EpisodeWaypointColor {
             for (int i = 0; i < blips.Length; i++) {
                Blip blip = blips[i];
                if (blip.Exists() && blip.Icon == BlipIcon.Misc_Waypoint &&
-                   (ownBlip == null || !ownBlip.Equals(blip))) return blip;
+                   !IsOwned(blip)) return blip;
             }
          }
          return null;
-      }
-
-      private void ApplyColor(int color) {
-         ownBlip.Color = (BlipColor)color;
-         ownBlip.RouteActive = routeEnabled;
-         ownColor = color;
       }
 
       private static bool Finite(float v) {
          return !float.IsNaN(v) && !float.IsInfinity(v);
       }
 
-      // Replaces the engine waypoint with our own blip. Blip positions cannot be changed in this
-      // API, so a moved waypoint means deleting ours and creating a new one. Nothing is thrown
-      // while a half-built copy exists; any failure removes the copy so the native waypoint is kept.
       private void ReplaceWaypoint(Blip waypoint, int color) {
          Vector3 position = waypoint.Position;
          if (!Finite(position.X) || !Finite(position.Y) || !Finite(position.Z))
             throw new InvalidOperationException("Waypoint has invalid coordinates");
 
-         if (ownBlip != null && ownBlip.Exists()) {
-            Vector3 mine = ownBlip.Position;
-            float dx = mine.X - position.X;
-            float dy = mine.Y - position.Y;
-            if (dx * dx + dy * dy < 1.0f) {
-               // same spot: the engine marker is still (or again) there, just switch it off
-               GTA.Native.Function.Call("SWITCH_OFF_WAYPOINT");
-               return;
+         int selected = -1;
+         float nearest = selectionRadius * selectionRadius;
+         for (int i = 0; i < waypoints.Count; i++) {
+            float distance = HorizontalDistanceSquared(waypoints[i].Position, position);
+            if (distance <= nearest) {
+               nearest = distance;
+               selected = i;
             }
-            RemoveWaypoint();
+         }
+         if (selected >= 0) {
+            DeleteNativeWaypoint(waypoint);
+            RemoveWaypoint(selected, "map selection");
+            return;
          }
 
          Blip copy = Blip.AddBlip(position);
          if (copy == null || !copy.Exists())
             throw new InvalidOperationException("Could not create replacement waypoint; original retained");
          try {
-            copy.Icon = waypointIcon;
+            // Avoid matching a native waypoint until ownership has been registered.
+            copy.Icon = BlipIcon.Misc_Destination;
             copy.Name = waypointName;
             copy.Display = BlipDisplay.ArrowAndMap;
-            copy.Color = (BlipColor)color;
-            copy.RouteActive = routeEnabled;
+            copy.Color = (BlipColor)VariantColor(color, waypoints.Count);
+            DeleteNativeWaypoint(waypoint);
          } catch (Exception) {
-            try { copy.Delete(); } catch (Exception) { }
+            try { DeleteBlip(copy); } catch (Exception ex) {
+               Game.Console.Print("EpisodeWaypointColor copy cleanup failed: " + ex.Message);
+            }
             throw;
          }
-         ownBlip = copy;
-         ownColor = color;
-         GTA.Native.Function.Call("SWITCH_OFF_WAYPOINT");
-         Debug("replacement placed, color " + color.ToString("X8"));
+         SavedWaypoint saved = new SavedWaypoint();
+         saved.Blip = copy;
+         saved.Position = position;
+         waypoints.Add(saved);
+         RefreshWaypoints();
+         Debug("added waypoint " + waypoints.Count + " at " + position + "; episode=" + Game.CurrentEpisode + "; preset=" + colorPreset);
+      }
+
+      private float HorizontalDistanceSquared(Vector3 a, Vector3 b) {
+         float dx = a.X - b.X;
+         float dy = a.Y - b.Y;
+         return dx * dx + dy * dy;
       }
 
       private void EpisodeWaypointColor_Tick(object sender, EventArgs e) {
          try {
             ReloadSettings();
-            if (ownBlip != null && !ownBlip.Exists()) ownBlip = null;
+            for (int i = waypoints.Count - 1; i >= 0; i--) {
+               if (!waypoints[i].Blip.Exists()) {
+                  waypoints.RemoveAt(i);
+                  RefreshWaypoints();
+                  Debug("engine removed waypoint " + (i + 1));
+               }
+            }
             Blip waypoint = FindNativeWaypoint();
             int color = GetEpisodeColor();
             if (waypoint != null) {
                ReplaceWaypoint(waypoint, color);
             }
-            if (ownBlip == null) return;
-            if (color != ownColor || ownBlip.Icon != waypointIcon) {
-               ownBlip.Icon = waypointIcon;
-               ApplyColor(color);
-            }
-            ownBlip.Name = waypointName;
-            ownBlip.RouteActive = routeEnabled;
-            if (removeOnArrival == false) return;
-            if (Game.Paused) return;
             Ped player = Player.Character;
-            if (player == null || !player.Exists()) return;
-            Vector3 target = ownBlip.Position;
-            Vector3 location = player.Position;
-            float dx = target.X - location.X;
-            float dy = target.Y - location.Y;
-            // Waypoint Z can be map-derived rather than road height.
-            if (dx * dx + dy * dy <= arrivalRadius * arrivalRadius) {
-               RemoveWaypoint();
-               Debug("arrived; waypoint removed");
+            if (removeOnArrival && !Game.Paused && player != null && player.Exists()) {
+               Vector3 location = player.Position;
+               for (int i = waypoints.Count - 1; i >= 0; i--)
+                  if (HorizontalDistanceSquared(waypoints[i].Position, location) <= arrivalRadius * arrivalRadius)
+                     RemoveWaypoint(i, "arrival");
+            }
+            BlipIcon icon = GetEpisodeIcon();
+            for (int i = 0; i < waypoints.Count; i++) {
+               SavedWaypoint saved = waypoints[i];
+               int variant = VariantColor(color, i);
+               if (!saved.Configured || saved.Icon != icon) saved.Blip.Icon = icon;
+               if (!saved.Configured || saved.Name != waypointName) saved.Blip.Name = waypointName;
+               if (!saved.Configured || saved.Color != variant) saved.Blip.Color = (BlipColor)variant;
+               if (!saved.Configured || saved.Route != routeEnabled) saved.Blip.RouteActive = routeEnabled;
+               if (!saved.Configured) Debug("configured waypoint " + (i + 1) + "; icon=" + icon + "; color=" + variant.ToString("X8") + "; route=" + routeEnabled);
+               saved.Color = variant;
+               saved.Icon = icon;
+               saved.Name = waypointName;
+               saved.Route = routeEnabled;
+               saved.Configured = true;
             }
          } catch (Exception ex) {
             if (Environment.TickCount - lastErrorTick >= 5000) {
                lastErrorTick = Environment.TickCount;
                Game.Console.Print("EpisodeWaypointColor error: " + ex.Message);
+               Debug("ERROR " + ex.ToString());
             }
          }
       }
