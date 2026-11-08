@@ -18,6 +18,7 @@ RainbowMode=false
 RainbowCycleMs=2500
 WaypointIcon=Misc_Waypoint
 WaypointName=Waypoint
+Persist=false
 SelectionRadius=10
 [Icons]
 GTAIV=Default
@@ -62,6 +63,16 @@ click handler; an existing ini may retain a slower `UpdateIntervalMs`.
 
 `RemoveOnArrival`, `RouteEnabled`, `WaypointIcon`, `WaypointName`, and all color values
 are editable mid-session.
+
+### Persistence
+
+`Persist=true` writes every marker position to `EpisodeWaypointColor.waypoints`
+(one `x y z` line per waypoint, in placement order) whenever a waypoint is added or
+removed, and recreates them on the next launch or script reload once the player
+exists. The file is deleted when the last marker is removed. Restored markers keep
+their original order, so the first still gets the base color. Note that persistence
+is per installation, not per save game: loading a different save restores the same
+markers. Delete the `.waypoints` file to start clean.
 
 ### Episode icons and color presets
 
