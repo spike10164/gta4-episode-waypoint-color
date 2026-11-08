@@ -21,10 +21,11 @@ Colors are `RRGGBBAA` hex. Settings reload approximately once per second.
 Missing settings are added automatically without deleting your existing ini.
 Legacy `Overlay`, `HideOriginal`, and `OverlayIcon` settings are no longer used.
 
-When a native waypoint is detected, the script creates or moves its own marker,
-removes the native waypoint using `SWITCH_OFF_WAYPOINT`, and enables `SET_ROUTE`
-on the replacement. The replacement uses the waypoint icon and name. Creation
-and initial configuration happen before removing the native waypoint.
+When a native waypoint is detected, the script creates its own marker at the same
+spot, enables `SET_ROUTE` on it, then removes the native waypoint using
+`SWITCH_OFF_WAYPOINT`. A moved waypoint replaces the copy (blip positions cannot be
+changed in this API). The copy is fully configured before the native waypoint is
+removed, and any failure deletes the copy so the original is never lost.
 
 The marker and route are intended to share the episode color; there is no separate
 route-color setting. **In-game verification is still required:** the engine may

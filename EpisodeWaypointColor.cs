@@ -135,29 +135,46 @@ namespace EpisodeWaypointColor {
          ownColor = color;
       }
 
+      private static bool Finite(float v) {
+         return !float.IsNaN(v) && !float.IsInfinity(v);
+      }
+
+      // Replaces the engine waypoint with our own blip. Blip positions cannot be changed in this
+      // API, so a moved waypoint means deleting ours and creating a new one. Nothing is thrown
+      // while a half-built copy exists; any failure removes the copy so the native waypoint is kept.
       private void ReplaceWaypoint(Blip waypoint, int color) {
          Vector3 position = waypoint.Position;
-         if (float.IsNaN(position.X) || float.IsNaN(position.Y) || float.IsNaN(position.Z) ||
-             float.IsInfinity(position.X) || float.IsInfinity(position.Y) || float.IsInfinity(position.Z))
+         if (!Finite(position.X) || !Finite(position.Y) || !Finite(position.Z))
             throw new InvalidOperationException("Waypoint has invalid coordinates");
 
-         if (ownBlip == null || !ownBlip.Exists()) {
-            ownBlip = Blip.AddBlip(position);
-            if (ownBlip == null || !ownBlip.Exists())
-               throw new InvalidOperationException("Could not create replacement waypoint; original retained");
-         } else {
-            ownBlip.Position = position;
+         if (ownBlip != null && ownBlip.Exists()) {
+            Vector3 mine = ownBlip.Position;
+            float dx = mine.X - position.X;
+            float dy = mine.Y - position.Y;
+            if (dx * dx + dy * dy < 1.0f) {
+               // same spot: the engine marker is still (or again) there, just switch it off
+               GTA.Native.Function.Call("SWITCH_OFF_WAYPOINT");
+               return;
+            }
+            RemoveWaypoint();
          }
-         // Keep the copy distinguishable until the engine's waypoint has been removed.
-         ownBlip.Icon = BlipIcon.Misc_Destination;
-         ownBlip.Name = "Waypoint";
-         ownBlip.Display = BlipDisplay.ArrowAndMap;
-         ownBlip.Color = (BlipColor)color;
+
+         Blip copy = Blip.AddBlip(position);
+         if (copy == null || !copy.Exists())
+            throw new InvalidOperationException("Could not create replacement waypoint; original retained");
+         try {
+            copy.Icon = BlipIcon.Misc_Waypoint;
+            copy.Name = "Waypoint";
+            copy.Display = BlipDisplay.ArrowAndMap;
+            copy.Color = (BlipColor)color;
+            copy.RouteActive = true;
+         } catch (Exception) {
+            try { copy.Delete(); } catch (Exception) { }
+            throw;
+         }
+         ownBlip = copy;
+         ownColor = color;
          GTA.Native.Function.Call("SWITCH_OFF_WAYPOINT");
-         if (waypoint.Exists())
-            throw new InvalidOperationException("Original waypoint was not removed");
-         ownBlip.Icon = BlipIcon.Misc_Waypoint;
-         ApplyColor(color);
          Debug("replacement placed, color " + color.ToString("X8"));
       }
 
@@ -171,10 +188,7 @@ namespace EpisodeWaypointColor {
                ReplaceWaypoint(waypoint, color);
             }
             if (ownBlip == null) return;
-            if (color != ownColor || ownBlip.Icon != BlipIcon.Misc_Waypoint) {
-               ownBlip.Icon = BlipIcon.Misc_Waypoint;
-               ApplyColor(color);
-            }
+            if (color != ownColor) ApplyColor(color);
             if (Game.Paused) return;
             Ped player = Player.Character;
             if (player == null || !player.Exists()) return;
