@@ -44,6 +44,7 @@ namespace EpisodeWaypointColor {
       private float selectionRadius = 10.0f;
       private string logPath;
       private string persistPath;
+      private bool persistPerEpisode = true;
       private bool persist = false;
       private bool restored = false;
       private bool dirty = false;
@@ -57,7 +58,7 @@ namespace EpisodeWaypointColor {
       public EpisodeWaypointColor() {
          logPath = Path.ChangeExtension(Settings.Filename, ".log");
          string oldPersistPath = Path.ChangeExtension(Settings.Filename, ".waypoints");
-         persistPath = Path.Combine(Path.GetDirectoryName(Settings.Filename), "EpisodeWaypointColor_Waypoints.txt");
+         persistPath = GetPersistPath();
          try {
             if (File.Exists(oldPersistPath) && !File.Exists(persistPath)) File.Move(oldPersistPath, persistPath);
          } catch (IOException) {
@@ -149,6 +150,7 @@ namespace EpisodeWaypointColor {
          changed |= EnsureIniKey(lines, "General", "WaypointIcon", "Misc_Waypoint", "; Any BlipIcon enum name.");
          changed |= EnsureIniKey(lines, "General", "WaypointName", "Waypoint", "; Label shown on map/legend.");
          changed |= EnsureIniKey(lines, "General", "Persist", "false", "; If true, waypoints are saved to EpisodeWaypointColor_Waypoints.txt and restored on the next launch or script reload.");
+         changed |= EnsureIniKey(lines, "General", "PersistPerEpisode", "true", "; If true, each episode keeps its own saved waypoints; if false, one shared list is used.");
          changed |= EnsureIniKey(lines, "General", "SelectionRadius", "10", "; Clicking within this many horizontal meters of a saved waypoint removes it (1-100).");
          changed |= EnsureIniKey(lines, "Icons", "GTAIV", "Default", "; BlipIcon enum name, or Default to use General/WaypointIcon.");
          changed |= EnsureIniKey(lines, "Icons", "TLAD", "Default", null);
@@ -197,6 +199,9 @@ namespace EpisodeWaypointColor {
          hueStepDegrees = ReadRange("Colors", "HueStepDegrees", 18.0f, 1.0f, 60.0f);
          selectionRadius = ReadRange("General", "SelectionRadius", 10.0f, 1.0f, 100.0f);
          persist = Settings.GetValueBool("Persist", "General", false);
+         bool wasPerEpisode = persistPerEpisode;
+         persistPerEpisode = Settings.GetValueBool("PersistPerEpisode", "General", true);
+         if (persistPerEpisode != wasPerEpisode && restored) dirty = true;
          // turning persistence on mid-session saves the current markers right away
          if (persist && !wasPersisting && restored) dirty = true;
          for (int i = 0; i < waypoints.Count; i++) waypoints[i].Configured = false;
@@ -465,11 +470,18 @@ namespace EpisodeWaypointColor {
          dirty = true;
       }
 
+      private string GetPersistPath() {
+         string name = "EpisodeWaypointColor_Waypoints";
+         if (persistPerEpisode) name += "_" + Game.CurrentEpisode.ToString();
+         return Path.Combine(Path.GetDirectoryName(Settings.Filename), name + ".txt");
+      }
+
       // One "x y z" line per waypoint, in placement order, so colors restore in the same order.
       private void SaveWaypoints() {
          dirty = false;
          if (!persist) return;
          try {
+            persistPath = GetPersistPath();
             List<string> lines = new List<string>();
             for (int i = 0; i < waypoints.Count; i++) {
                Vector3 v = waypoints[i].Position;
@@ -490,6 +502,7 @@ namespace EpisodeWaypointColor {
 
       private void RestoreWaypoints(int color) {
          restored = true;
+         persistPath = GetPersistPath();
          if (!persist || !File.Exists(persistPath)) return;
          string[] lines = File.ReadAllLines(persistPath);
          int count = 0;

@@ -19,6 +19,7 @@ RainbowCycleMs=2500
 WaypointIcon=Misc_Waypoint
 WaypointName=Waypoint
 Persist=false
+PersistPerEpisode=true
 SelectionRadius=10
 [Icons]
 GTAIV=Default
@@ -76,7 +77,11 @@ is per installation, not per save game: loading a different save restores the sa
 markers. Delete the waypoints text file to start clean. Restoring waits about 3 seconds
 after the player appears, and markers the engine itself clears (save load, mission
 cleanup) do not erase the saved file; only your own removals and arrivals do.
-Enabling `Persist` mid-session saves the current markers immediately.
+With `PersistPerEpisode=true` (default) each episode has its own file
+(`EpisodeWaypointColor_Waypoints_GTAIV.txt`, `_TLAD.txt`, `_TBOGT.txt`); with `false`
+all episodes share `EpisodeWaypointColor_Waypoints.txt`. Switching the setting
+mid-session writes the current markers to the newly selected file; the other file is
+left untouched. Enabling `Persist` mid-session saves the current markers immediately.
 
 ### Episode icons and color presets
 
