@@ -47,6 +47,8 @@ namespace EpisodeWaypointColor {
       private bool persist = false;
       private bool restored = false;
       private bool dirty = false;
+      private int playerSeenTick = 0;
+      private int retryAfterTick = 0;
       private string waypointName = "Waypoint";
       private int lastSettingsCheck = 0;
       private DateTime settingsWriteTime;
@@ -156,7 +158,9 @@ namespace EpisodeWaypointColor {
 
       // Creates EpisodeWaypointColor.ini next to the script on first launch.
       private void LoadSettings() {
+         bool wasPersisting = persist;
          try {
+            settingsWriteTime = File.GetLastWriteTimeUtc(Settings.Filename);
             MergeMissingKeys();
             Settings.Load();
             settingsWriteTime = File.GetLastWriteTimeUtc(Settings.Filename);
@@ -187,6 +191,8 @@ namespace EpisodeWaypointColor {
          hueStepDegrees = ReadRange("Colors", "HueStepDegrees", 18.0f, 1.0f, 60.0f);
          selectionRadius = ReadRange("General", "SelectionRadius", 10.0f, 1.0f, 100.0f);
          persist = Settings.GetValueBool("Persist", "General", false);
+         // turning persistence on mid-session saves the current markers right away
+         if (persist && !wasPersisting && restored) dirty = true;
          for (int i = 0; i < waypoints.Count; i++) waypoints[i].Configured = false;
          if (float.IsNaN(arrivalRadius) || float.IsInfinity(arrivalRadius) || arrivalRadius < 1.0f || arrivalRadius > 100.0f) {
             Game.Console.Print("EpisodeWaypointColor: ArrivalRadius must be 1-100 metres; using 15");
@@ -358,6 +364,10 @@ namespace EpisodeWaypointColor {
       }
 
       private void DeleteNativeWaypoint(Blip blip) {
+         // the engine keeps its own waypoint state, so clear it properly before falling back to blip removal
+         GTA.Native.Function.Call("SWITCH_OFF_WAYPOINT");
+         int handle = ((GTA.@base.iHandleObject)blip).Handle;
+         if (!GTA.Native.Function.Call<bool>("DOES_BLIP_EXIST", handle)) return;
          GTA.Native.Function.Call("SET_THIS_SCRIPT_CAN_REMOVE_BLIPS_CREATED_BY_ANY_SCRIPT", true);
          try { DeleteBlip(blip); }
          finally { GTA.Native.Function.Call("SET_THIS_SCRIPT_CAN_REMOVE_BLIPS_CREATED_BY_ANY_SCRIPT", false); }
@@ -509,7 +519,6 @@ namespace EpisodeWaypointColor {
                if (!waypoints[i].Blip.Exists()) {
                   waypoints.RemoveAt(i);
                   RefreshWaypoints();
-                  dirty = true;
                   Debug("engine removed waypoint " + (i + 1));
                }
             }
@@ -517,10 +526,19 @@ namespace EpisodeWaypointColor {
             int color = GetEpisodeColor();
             if (!restored) {
                Ped p = Player.Character;
-               if (p != null && p.Exists()) RestoreWaypoints(color);
+               if (p == null || !p.Exists() || Game.Paused) playerSeenTick = 0;
+               else if (playerSeenTick == 0) playerSeenTick = Environment.TickCount;
+               // wait for the game to settle after loading, or the engine may clear restored blips
+               else if (Environment.TickCount - playerSeenTick > 3000) RestoreWaypoints(color);
             }
-            if (waypoint != null) {
-               ReplaceWaypoint(waypoint, color);
+            // after a failure, back off so a persistent error cannot create and delete blips every tick
+            if (waypoint != null && Environment.TickCount - retryAfterTick >= 0) {
+               try {
+                  ReplaceWaypoint(waypoint, color);
+               } catch (Exception) {
+                  retryAfterTick = Environment.TickCount + 2000;
+                  throw;
+               }
             }
             Ped player = Player.Character;
             if (removeOnArrival && !Game.Paused && player != null && player.Exists()) {

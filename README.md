@@ -43,9 +43,10 @@ not a direct hook into the map's selection event: it requires the game to create
 native waypoint when you click. Click behaviour and zoom-dependent accuracy need
 in-game verification.
 
-The script prepares a copy before deleting only the detected native blip, then
-applies its episode icon and route. It does not use the global waypoint switch-off,
-which could interfere with other markers. Initial configuration failures remove the
+The script prepares a copy before removing the detected native waypoint, using the
+engine's own `SWITCH_OFF_WAYPOINT` first so its internal waypoint state is cleared,
+then falling back to direct blip removal. After a failure it backs off for 2 seconds
+rather than retrying every tick. Initial configuration failures remove the
 copy and report an error; the destination may already have been transferred if a
 later engine call fails.
 
@@ -72,7 +73,10 @@ removed, and recreates them on the next launch or script reload once the player
 exists. The file is deleted when the last marker is removed. Restored markers keep
 their original order, so the first still gets the base color. Note that persistence
 is per installation, not per save game: loading a different save restores the same
-markers. Delete the `.waypoints` file to start clean.
+markers. Delete the `.waypoints` file to start clean. Restoring waits about 3 seconds
+after the player appears, and markers the engine itself clears (save load, mission
+cleanup) do not erase the saved file; only your own removals and arrivals do.
+Enabling `Persist` mid-session saves the current markers immediately.
 
 ### Episode icons and color presets
 
