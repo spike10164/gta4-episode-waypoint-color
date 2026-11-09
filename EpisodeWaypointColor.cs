@@ -56,7 +56,13 @@ namespace EpisodeWaypointColor {
 
       public EpisodeWaypointColor() {
          logPath = Path.ChangeExtension(Settings.Filename, ".log");
-         persistPath = Path.ChangeExtension(Settings.Filename, ".waypoints");
+         string oldPersistPath = Path.ChangeExtension(Settings.Filename, ".waypoints");
+         persistPath = Path.Combine(Path.GetDirectoryName(Settings.Filename), "EpisodeWaypointColor_Waypoints.txt");
+         try {
+            if (File.Exists(oldPersistPath) && !File.Exists(persistPath)) File.Move(oldPersistPath, persistPath);
+         } catch (IOException) {
+         } catch (UnauthorizedAccessException) {
+         }
          LoadSettings();
          // the waypoint blip is recreated whenever the player sets a new one, so poll
          this.Tick += new EventHandler(this.EpisodeWaypointColor_Tick);
@@ -142,7 +148,7 @@ namespace EpisodeWaypointColor {
          changed |= EnsureIniKey(lines, "General", "RainbowCycleMs", "2500", "; Full rainbow cycle duration in milliseconds (250-60000).");
          changed |= EnsureIniKey(lines, "General", "WaypointIcon", "Misc_Waypoint", "; Any BlipIcon enum name.");
          changed |= EnsureIniKey(lines, "General", "WaypointName", "Waypoint", "; Label shown on map/legend.");
-         changed |= EnsureIniKey(lines, "General", "Persist", "false", "; If true, waypoints are saved to EpisodeWaypointColor.waypoints and restored on the next launch or script reload.");
+         changed |= EnsureIniKey(lines, "General", "Persist", "false", "; If true, waypoints are saved to EpisodeWaypointColor_Waypoints.txt and restored on the next launch or script reload.");
          changed |= EnsureIniKey(lines, "General", "SelectionRadius", "10", "; Clicking within this many horizontal meters of a saved waypoint removes it (1-100).");
          changed |= EnsureIniKey(lines, "Icons", "GTAIV", "Default", "; BlipIcon enum name, or Default to use General/WaypointIcon.");
          changed |= EnsureIniKey(lines, "Icons", "TLAD", "Default", null);
