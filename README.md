@@ -32,7 +32,13 @@ GTAIV=4FA3E0FF
 TLAD=C8102EFF
 TBOGT=FF2FB9FF
 ```
-Colors are `RRGGBBAA` hex. Settings reload approximately once per second.
+Colors are `RRGGBBAA` hex; the script converts them to the ARGB layout the game expects.
+Settings reload approximately once per second.
+
+**Pause menu:** scripts do not run while the pause menu/map is open, so a waypoint
+placed there is replaced the moment you return to the game. The GPS route for a
+script blip is calculated by the engine after it is created, so it can appear a moment
+later than the native waypoint's route.
 The ini is auto-created on first start, and missing keys are appended to existing
 files automatically (no deletion needed).
 Legacy `Overlay`, `HideOriginal`, and `OverlayIcon` settings are no longer used.

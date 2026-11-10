@@ -28,6 +28,7 @@ namespace EpisodeWaypointColor {
          public BlipIcon Icon;
          public string Name;
          public bool Route;
+         public bool RouteApplied;
       }
       private List<SavedWaypoint> waypoints = new List<SavedWaypoint>();
       private float arrivalRadius = 15.0f;
@@ -306,6 +307,17 @@ namespace EpisodeWaypointColor {
          return ((ClampByte(r) & 255) << 24) | ((ClampByte(g) & 255) << 16) | ((ClampByte(b) & 255) << 8) | (ClampByte(a) & 255);
       }
 
+      // Colours are kept as RRGGBBAA internally (the ini format), but the native takes packed ARGB,
+      // the same layout the API's own Blip.SetColorRGB uses. Preset indices 0-14 pass through.
+      private static int ToNativeColor(int rgba) {
+         if (rgba >= 0 && rgba <= 14) return rgba;
+         int r = (rgba >> 24) & 255;
+         int g = (rgba >> 16) & 255;
+         int b = (rgba >> 8) & 255;
+         int a = rgba & 255;
+         return (a << 24) | (r << 16) | (g << 8) | b;
+      }
+
       private int GetRainbowColor(int nowTick) {
          int phaseTick = nowTick % rainbowCycleMs;
          if (phaseTick < 0) phaseTick += rainbowCycleMs;
@@ -450,11 +462,14 @@ namespace EpisodeWaypointColor {
          if (copy == null || !copy.Exists())
             throw new InvalidOperationException("Could not create replacement waypoint; original retained");
          try {
-            // Avoid matching a native waypoint until ownership has been registered.
-            copy.Icon = BlipIcon.Misc_Destination;
+            // Final look and route are applied straight away, so the GPS starts calculating before
+            // the native waypoint is removed. The copy is registered in this same call, before the
+            // next native-waypoint scan, so using the waypoint icon here is safe.
+            copy.Icon = GetEpisodeIcon();
             copy.Name = waypointName;
             copy.Display = BlipDisplay.ArrowAndMap;
-            copy.Color = (BlipColor)VariantColor(color, waypoints.Count);
+            copy.Color = (BlipColor)ToNativeColor(VariantColor(color, waypoints.Count));
+            copy.RouteActive = routeEnabled;
             if (nativeWaypoint != null) DeleteNativeWaypoint(nativeWaypoint);
          } catch (Exception) {
             try { DeleteBlip(copy); } catch (Exception ex) {
@@ -465,6 +480,8 @@ namespace EpisodeWaypointColor {
          SavedWaypoint saved = new SavedWaypoint();
          saved.Blip = copy;
          saved.Position = position;
+         saved.Route = routeEnabled;
+         saved.RouteApplied = true;
          waypoints.Add(saved);
          RefreshWaypoints();
          dirty = true;
@@ -572,8 +589,12 @@ namespace EpisodeWaypointColor {
                int variant = VariantColor(color, i);
                if (!saved.Configured || saved.Icon != icon) saved.Blip.Icon = icon;
                if (!saved.Configured || saved.Name != waypointName) saved.Blip.Name = waypointName;
-               if (!saved.Configured || saved.Color != variant) saved.Blip.Color = (BlipColor)variant;
-               if (!saved.Configured || saved.Route != routeEnabled) saved.Blip.RouteActive = routeEnabled;
+               if (!saved.Configured || saved.Color != variant) saved.Blip.Color = (BlipColor)ToNativeColor(variant);
+               // re-sending SET_ROUTE can restart the GPS calculation, so only send real changes
+               if (!saved.RouteApplied || saved.Route != routeEnabled) {
+                  saved.Blip.RouteActive = routeEnabled;
+                  saved.RouteApplied = true;
+               }
                if (!saved.Configured) Debug("configured waypoint " + (i + 1) + "; icon=" + icon + "; color=" + variant.ToString("X8") + "; route=" + routeEnabled);
                saved.Color = variant;
                saved.Icon = icon;
