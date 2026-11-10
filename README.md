@@ -1,7 +1,7 @@
 # Episode Waypoint Color (GTA IV Complete Edition)
 
-ScriptHookDotNet script that replaces player waypoints with episode-colored
-script blips and requests a GPS route for each:
+ScriptHookDotNet script that replaces the player's waypoint with an episode-coloured
+script blip and GPS route:
 GTA IV = steel blue, TLAD = blood red, TBOGT = hot pink.
 
 Install: install ScriptHookDotNet, then copy `EpisodeWaypointColor.cs` to `<GTA IV>/scripts/`.
@@ -16,7 +16,7 @@ RemoveOnArrival=true
 RouteEnabled=true
 RainbowMode=false
 RainbowCycleMs=2500
-WaypointIcon=Misc_Waypoint
+WaypointIcon=Misc_Destination
 WaypointName=Waypoint
 Persist=false
 PersistPerEpisode=true
@@ -27,107 +27,54 @@ TLAD=Default
 TBOGT=Default
 [Colors]
 Preset=Episode
-HueStepDegrees=18
 GTAIV=4FA3E0FF
 TLAD=C8102EFF
 TBOGT=FF2FB9FF
 ```
-Colors are `RRGGBBAA` hex and are sent to the game unchanged.
-Settings reload approximately once per second.
+Colours are `RRGGBBAA` hex; 1-2 digits (e.g. `TLAD=9`) use a preset index instead
+(0 white, 1 dark red, 3 cyan, 5 yellow, 7 purple, 9 red, 13 turquoise...).
+Settings reload about once per second during play. Missing keys are appended to
+existing ini files automatically; existing values are never overwritten.
 
-**Pause menu:** scripts do not run while the pause menu/map is open, so a waypoint
-placed there is replaced the moment you return to the game. The GPS route for a
-script blip is calculated by the engine after it is created, so it can appear a moment
-later than the native waypoint's route.
-The ini is auto-created on first start, and missing keys are appended to existing
-files automatically (no deletion needed).
-Legacy `Overlay`, `HideOriginal`, and `OverlayIcon` settings are no longer used.
+### How it works
 
-Placing a waypoint at a new location adds a marker without removing earlier markers.
-Placing a native waypoint within `SelectionRadius` horizontal metres (1-250, default 75; map clicks often land 50+ m off) of an
-existing marker removes the nearest one instead. This is a proximity-based toggle,
-not a direct hook into the map's selection event: it requires the game to create a
-native waypoint when you click. Click behaviour and zoom-dependent accuracy need
-in-game verification.
+There is one waypoint at a time. When you place a waypoint, the script creates its
+own blip there (icon, name, colour and route set immediately) and removes the game's
+waypoint (`SWITCH_OFF_WAYPOINT`, then direct removal as a fallback). Placing a new
+waypoint moves it. Placing one within `SelectionRadius` metres (1-250, default 75) of
+the current waypoint clears it instead, because map clicks on a blip often land
+50+ m away. It is also removed when you arrive within `ArrivalRadius` metres
+(1-100, default 15, horizontal distance) if `RemoveOnArrival=true`.
 
-The script prepares a copy before removing the detected native waypoint, using the
-engine's own `SWITCH_OFF_WAYPOINT` first so its internal waypoint state is cleared,
-then falling back to direct blip removal. After a failure it backs off for 2 seconds
-rather than retrying every tick. Initial configuration failures remove the
-copy and report an error; the destination may already have been transferred if a
-later engine call fails.
+GTA IV has no way to disable its built-in waypoint, and scripts do not run while the
+pause menu/map is open, so the replacement happens as soon as you return to the game.
+The engine calculates a script blip's GPS route shortly after it is created, so the
+route can appear a moment later than the native one.
 
-The marker and route are intended to share the episode color; there is no separate
-route-color setting. **Multiple GPS routes are experimental:** the script calls
-`SET_ROUTE` for every saved waypoint, but GTA IV may display only one route or
-override custom route colours. The API offers no independent per-route colour
-setter. Markers can coexist even if simultaneous GPS routes are unsupported.
+### Icons
 
-Each marker stays until selected again or you arrive within
-`ArrivalRadius` metres (1-100, default 15). Arrival uses horizontal distance because
-map-selected waypoint height may not match road height. Arrival removal is suspended
-while paused. Detection runs on the next script tick, not directly inside the map's
-click handler; an existing ini may retain a slower `UpdateIntervalMs`.
+The default icon is `Misc_Destination`. `Misc_Waypoint` (the game's waypoint flag)
+can be set, but the game draws that sprite in its own colour, so it ignores the
+colour settings. `[Icons]` `GTAIV`/`TLAD`/`TBOGT` accept any `BlipIcon` enum name
+(e.g. `Misc_Destination1`, `Misc_Objective`); `Default` uses `[General] WaypointIcon`.
 
-`RemoveOnArrival`, `RouteEnabled`, `WaypointIcon`, `WaypointName`, and all color values
-are editable mid-session.
+### Colour presets
+
+- `Episode`: your `GTAIV`, `TLAD` and `TBOGT` colours.
+- `Original`: green preset index (8).
+- `HighContrast`: bright yellow.
+- `Rainbow`: cycles continuously (same as `RainbowMode=true`; `RainbowCycleMs` 250-60000).
 
 ### Persistence
 
-`Persist=true` writes every marker position to `EpisodeWaypointColor_Waypoints.txt`
-(one `x y z` line per waypoint, in placement order) whenever a waypoint is added or
-removed, and recreates them on the next launch or script reload once the player
-exists. The file is deleted when the last marker is removed. Restored markers keep
-their original order, so the first still gets the base color. Note that persistence
-is per installation, not per save game: loading a different save restores the same
-markers. Delete the waypoints text file to start clean. Restoring waits about 3 seconds
-after the player appears, and markers the engine itself clears (save load, mission
-cleanup) do not erase the saved file; only your own removals and arrivals do.
-With `PersistPerEpisode=true` (default) each episode has its own file
-(`EpisodeWaypointColor_Waypoints_GTAIV.txt`, `_TLAD.txt`, `_TBOGT.txt`); with `false`
-all episodes share `EpisodeWaypointColor_Waypoints.txt`. Switching the setting
-mid-session writes the current markers to the newly selected file; the other file is
-left untouched. Enabling `Persist` mid-session saves the current markers immediately.
+`Persist=true` saves the waypoint position to `EpisodeWaypointColor_Waypoints_<Episode>.txt`
+(or `EpisodeWaypointColor_Waypoints.txt` with `PersistPerEpisode=false`) and restores it
+about 3 seconds after the player appears on the next launch or script reload. The file
+is deleted when you clear or reach the waypoint. Engine removals (save load, mission
+cleanup) do not erase it. Persistence is per installation, not per save game.
 
-### Episode icons and color presets
+### Troubleshooting
 
-Set `[Icons]` keys `GTAIV`, `TLAD`, and `TBOGT` to a `BlipIcon` enum name, such as
-`Misc_Waypoint`, `Misc_Destination`, or `Misc_Destination1`. `Default` inherits
-`[General] WaypointIcon`, preserving existing configurations. Icon changes apply to
-all saved markers immediately after settings reload. `WaypointName` remains the
-shared map label, defaulting to `Waypoint`.
-
-`[Colors] Preset` accepts:
-
-- `Episode`: uses your `GTAIV`, `TLAD`, and `TBOGT` ini colors.
-- `Original`: uses the green preset index (8), not an engine-default color query.
-- `HighContrast`: uses bright yellow.
-- `Rainbow`: continuously cycles the base color.
-
-The earliest remaining waypoint gets the exact base color. Later markers receive
-alternating positive/negative hue offsets using `HueStepDegrees` (1-60, default 18).
-After any removal, colors are reassigned in placement order, so the new first marker
-gets the base color. White, grey, and black bases gain a subtle tint on later markers.
-For preset-index colors, later markers use approximate RGB equivalents; the first
-retains the exact index. Many markers can eventually repeat hues.
-
-`RainbowMode=true` makes the waypoint color cycle continuously. `RainbowCycleMs`
-controls how long one full cycle takes (250-60000). When rainbow mode is on, episode
-color keys are ignored until it is turned off.
-
-This is not an exact replacement for the engine's waypoint bookkeeping. Native
-map-click cancellation, mission route priority, taxi destination selection, other
-mods that read waypoints, and script reload cleanup need in-game verification.
-The mod does not recolor or delete mission objective blips.
-
-Troubleshooting: set `Debug=true`, place a waypoint, and check the console (`~`) and
-`EpisodeWaypointColor.log` beside the script. Debug records additions, map-selection
-and arrival removals, current count, episode, preset, configured icon/color/route,
-settings reloads, and error stack traces. It does not log every rainbow frame.
-A color of 1-2 digits (e.g. `TLAD=9`) uses a preset index instead (0 white, 1 dark red, 3 cyan, 5 yellow, 7 purple, 9 red, 13 turquoise...).
-
-In-game checks: add three waypoints in each episode, select the middle one to remove
-it, then remove the first and confirm the remaining marker gets the base color.
-Check requested routes and their colors, arrival removal, each preset, episode
-icons, and ini edits during play. Repeat during a mission. Route rendering and
-map-selection interception cannot be verified outside the game.
+Set `Debug=true` and check the console (`~`) and `EpisodeWaypointColor.log` beside the
+script. It logs placements, removals (with the distance to the current waypoint),
+configured icon/colour/route, settings reloads and errors.
