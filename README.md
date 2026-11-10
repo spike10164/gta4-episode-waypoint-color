@@ -14,6 +14,7 @@ Debug=false
 ArrivalRadius=15
 RemoveOnArrival=true
 RouteEnabled=true
+SplitRouteBlip=true
 RainbowMode=false
 RainbowCycleMs=2500
 WaypointIcon=Misc_Destination
@@ -51,12 +52,16 @@ pause menu/map is open, so the replacement happens as soon as you return to the 
 The engine calculates a script blip's GPS route shortly after it is created, so the
 route can appear a moment later than the native one.
 
-### Icons
+### Icons and route
 
-The default icon is `Misc_Destination`. `Misc_Waypoint` (the game's waypoint flag)
-can be set, but the game draws that sprite in its own colour, so it ignores the
-colour settings. `[Icons]` `GTAIV`/`TLAD`/`TBOGT` accept any `BlipIcon` enum name
-(e.g. `Misc_Destination1`, `Misc_Objective`); `Default` uses `[General] WaypointIcon`.
+The game draws the icon of whichever blip has the GPS route in its fixed colour. With
+`SplitRouteBlip=true` (default) the visible icon has no route; a second, zero-size blip at
+the same spot carries the route, coloured the same so the route line matches. Set it to
+`false` to put the route on the visible icon again (icon colour is then ignored).
+
+The default icon is `Misc_Destination`; `[Icons]` `GTAIV`/`TLAD`/`TBOGT` accept any
+`BlipIcon` enum name (e.g. `Misc_Waypoint`, `Misc_Destination1`, `Misc_Objective`);
+`Default` uses `[General] WaypointIcon`.
 
 ### Colour presets
 

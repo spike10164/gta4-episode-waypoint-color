@@ -22,6 +22,8 @@ namespace EpisodeWaypointColor {
       private bool debug = false;
       private class SavedWaypoint {
          public Blip Blip;
+         // invisible blip at the same spot that carries the GPS route (null when not split)
+         public Blip RouteBlip;
          public Vector3 Position;
          public int Color;
          public bool Configured;
@@ -34,6 +36,7 @@ namespace EpisodeWaypointColor {
       private float arrivalRadius = 15.0f;
       private bool removeOnArrival = true;
       private bool routeEnabled = true;
+      private bool splitRoute = true;
       private bool rainbowMode = false;
       private int rainbowCycleMs = 2500;
       private BlipIcon waypointIcon = BlipIcon.Misc_Destination;
@@ -145,6 +148,7 @@ namespace EpisodeWaypointColor {
          changed |= EnsureIniKey(lines, "General", "ArrivalRadius", "15", "; Remove fake waypoint when within this horizontal distance in meters (1-100).");
          changed |= EnsureIniKey(lines, "General", "RemoveOnArrival", "true", "; If false, the waypoint remains until selected again or removed by the engine.");
          changed |= EnsureIniKey(lines, "General", "RouteEnabled", "true", "; If true, enables GPS route on the fake waypoint.");
+         changed |= EnsureIniKey(lines, "General", "SplitRouteBlip", "true", "; If true, the GPS route is carried by a separate invisible blip, because the game draws a routed blip's icon in its fixed colour.");
          changed |= EnsureIniKey(lines, "General", "RainbowMode", "false", "; If true, colors cycle continuously instead of using per-episode colors.");
          changed |= EnsureIniKey(lines, "General", "RainbowCycleMs", "2500", "; Full rainbow cycle duration in milliseconds (250-60000).");
          changed |= EnsureIniKey(lines, "General", "WaypointIcon", "Misc_Destination", "; Any BlipIcon enum name. Misc_Waypoint is drawn by the game in its own colour, so it ignores the colours below.");
@@ -182,6 +186,9 @@ namespace EpisodeWaypointColor {
          arrivalRadius = Settings.GetValueFloat("ArrivalRadius", "General", 15.0f);
          removeOnArrival = Settings.GetValueBool("RemoveOnArrival", "General", true);
          routeEnabled = Settings.GetValueBool("RouteEnabled", "General", true);
+         bool wasSplit = splitRoute;
+         splitRoute = Settings.GetValueBool("SplitRouteBlip", "General", true);
+         if (marker != null && splitRoute != wasSplit) marker.RouteApplied = false;
          rainbowMode = Settings.GetValueBool("RainbowMode", "General", false);
          rainbowCycleMs = Settings.GetValueInteger("RainbowCycleMs", "General", 2500);
          waypointName = Settings.GetValueString("WaypointName", "General", "Waypoint");
@@ -355,12 +362,13 @@ namespace EpisodeWaypointColor {
          SavedWaypoint old = marker;
          marker = null;
          dirty = true;
-         DeleteBlip(old.Blip);
+         try { if (old.RouteBlip != null) DeleteBlip(old.RouteBlip); }
+         finally { DeleteBlip(old.Blip); }
          Debug("removed waypoint: " + reason);
       }
 
       private bool IsOwned(Blip blip) {
-         return marker != null && marker.Blip.Equals(blip);
+         return marker != null && (marker.Blip.Equals(blip) || (marker.RouteBlip != null && marker.RouteBlip.Equals(blip)));
       }
 
       private Blip FindNativeWaypoint() {
@@ -400,6 +408,37 @@ namespace EpisodeWaypointColor {
          Debug("placed waypoint at " + position + "; episode=" + Game.CurrentEpisode + "; preset=" + colorPreset);
       }
 
+      // The routed blip's icon ignores custom colours, so the route goes on a second, zero-size blip
+      // with the same colour (the route line takes its colour) and the visible icon has no route.
+      private Blip CreateRouteBlip(Vector3 position, int color) {
+         Blip route = Blip.AddBlip(position);
+         if (route == null || !route.Exists()) throw new InvalidOperationException("Could not create route blip");
+         try {
+            route.Icon = BlipIcon.Misc_Destination;
+            route.Name = waypointName;
+            route.Display = BlipDisplay.ArrowAndMap;
+            route.Scale = 0.0f;
+            route.Color = (BlipColor)color;
+            route.RouteActive = true;
+         } catch (Exception) {
+            try { DeleteBlip(route); } catch (Exception) { }
+            throw;
+         }
+         return route;
+      }
+
+      // Applies the route to either the visible blip or a separate route blip, per the settings.
+      private void ApplyRoute(SavedWaypoint w, int color) {
+         bool wantRouteBlip = routeEnabled && splitRoute;
+         w.Blip.RouteActive = routeEnabled && !splitRoute;
+         if (wantRouteBlip && w.RouteBlip == null) w.RouteBlip = CreateRouteBlip(w.Position, color);
+         if (!wantRouteBlip && w.RouteBlip != null) {
+            Blip old = w.RouteBlip;
+            w.RouteBlip = null;
+            DeleteBlip(old);
+         }
+      }
+
       // Creates our marker at position, replacing any previous one. When nativeWaypoint is given it
       // is deleted after the new marker is configured, so a failure never loses the destination.
       private void CreateMarker(Vector3 position, int color, Blip nativeWaypoint) {
@@ -407,15 +446,18 @@ namespace EpisodeWaypointColor {
          if (copy == null || !copy.Exists())
             throw new InvalidOperationException("Could not create replacement waypoint; original retained");
          BlipIcon icon = GetEpisodeIcon();
+         Blip routeBlip = null;
          try {
             // final look and route are applied straight away, so the GPS starts calculating at once
             copy.Icon = icon;
             copy.Name = waypointName;
             copy.Display = BlipDisplay.ArrowAndMap;
             copy.Color = (BlipColor)color;
-            copy.RouteActive = routeEnabled;
+            if (routeEnabled && splitRoute) routeBlip = CreateRouteBlip(position, color);
+            else copy.RouteActive = routeEnabled;
             if (nativeWaypoint != null) DeleteNativeWaypoint(nativeWaypoint);
          } catch (Exception) {
+            try { if (routeBlip != null) DeleteBlip(routeBlip); } catch (Exception) { }
             try { DeleteBlip(copy); } catch (Exception ex) {
                Game.Console.Print("EpisodeWaypointColor copy cleanup failed: " + ex.Message);
             }
@@ -428,6 +470,7 @@ namespace EpisodeWaypointColor {
          }
          SavedWaypoint saved = new SavedWaypoint();
          saved.Blip = copy;
+         saved.RouteBlip = routeBlip;
          saved.Position = position;
          saved.Color = color;
          saved.Icon = icon;
@@ -437,7 +480,7 @@ namespace EpisodeWaypointColor {
          saved.Configured = true;
          marker = saved;
          dirty = true;
-         Debug("configured waypoint; icon=" + icon + "; color=" + color.ToString("X8") + "; route=" + routeEnabled);
+         Debug("configured waypoint; icon=" + icon + "; color=" + color.ToString("X8") + "; route=" + routeEnabled + "; split=" + (routeBlip != null));
       }
 
       private string GetPersistPath() {
@@ -502,7 +545,15 @@ namespace EpisodeWaypointColor {
       private void EpisodeWaypointColor_Tick(object sender, EventArgs e) {
          try {
             ReloadSettings();
+            if (marker != null && marker.RouteBlip != null && !marker.RouteBlip.Exists()) {
+               // the engine dropped only the route carrier; recreate it below
+               marker.RouteBlip = null;
+               marker.RouteApplied = false;
+            }
             if (marker != null && !marker.Blip.Exists()) {
+               if (marker.RouteBlip != null) {
+                  try { DeleteBlip(marker.RouteBlip); } catch (Exception) { }
+               }
                marker = null;
                Debug("engine removed the waypoint");
             }
@@ -532,10 +583,13 @@ namespace EpisodeWaypointColor {
                BlipIcon icon = GetEpisodeIcon();
                if (!marker.Configured || marker.Icon != icon) marker.Blip.Icon = icon;
                if (!marker.Configured || marker.Name != waypointName) marker.Blip.Name = waypointName;
-               if (!marker.Configured || marker.Color != color) marker.Blip.Color = (BlipColor)color;
+               if (!marker.Configured || marker.Color != color) {
+                  marker.Blip.Color = (BlipColor)color;
+                  if (marker.RouteBlip != null) marker.RouteBlip.Color = (BlipColor)color;
+               }
                // re-sending SET_ROUTE can restart the GPS calculation, so only send real changes
                if (!marker.RouteApplied || marker.Route != routeEnabled) {
-                  marker.Blip.RouteActive = routeEnabled;
+                  ApplyRoute(marker, color);
                   marker.RouteApplied = true;
                }
                if (!marker.Configured) Debug("configured waypoint; icon=" + icon + "; color=" + color.ToString("X8") + "; route=" + routeEnabled);
