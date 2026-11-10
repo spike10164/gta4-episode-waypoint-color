@@ -51,6 +51,7 @@ namespace EpisodeWaypointColor {
       private bool dirty = false;
       private int playerSeenTick = 0;
       private int retryAfterTick = 0;
+      private int lastDumpTick = 0;
       private string waypointName = "Waypoint";
       private int lastSettingsCheck = 0;
       private DateTime settingsWriteTime;
@@ -390,7 +391,11 @@ namespace EpisodeWaypointColor {
          // the engine keeps its own waypoint state, so clear it properly before falling back to blip removal
          GTA.Native.Function.Call("SWITCH_OFF_WAYPOINT");
          int handle = ((GTA.@base.iHandleObject)blip).Handle;
-         if (!GTA.Native.Function.Call<bool>("DOES_BLIP_EXIST", handle)) return;
+         if (!GTA.Native.Function.Call<bool>("DOES_BLIP_EXIST", handle)) {
+            Debug("native waypoint " + handle + " cleared by SWITCH_OFF_WAYPOINT");
+            return;
+         }
+         Debug("native waypoint " + handle + " survived SWITCH_OFF_WAYPOINT; removing blip directly");
          GTA.Native.Function.Call("SET_THIS_SCRIPT_CAN_REMOVE_BLIPS_CREATED_BY_ANY_SCRIPT", true);
          try { DeleteBlip(blip); }
          finally { GTA.Native.Function.Call("SET_THIS_SCRIPT_CAN_REMOVE_BLIPS_CREATED_BY_ANY_SCRIPT", false); }
@@ -436,6 +441,16 @@ namespace EpisodeWaypointColor {
          if (!Finite(position.X) || !Finite(position.Y) || !Finite(position.Z))
             throw new InvalidOperationException("Waypoint has invalid coordinates");
 
+         if (debug) {
+            float closest = -1.0f;
+            int closestIndex = -1;
+            for (int i = 0; i < waypoints.Count; i++) {
+               float d = (float)Math.Sqrt(HorizontalDistanceSquared(waypoints[i].Position, position));
+               if (closest < 0.0f || d < closest) { closest = d; closestIndex = i; }
+            }
+            Debug("native waypoint " + ((GTA.@base.iHandleObject)waypoint).Handle + " at " + position +
+               (closestIndex >= 0 ? "; nearest marker " + (closestIndex + 1) + " is " + closest.ToString("0.0") + " m away (SelectionRadius " + selectionRadius + ")" : "; no markers"));
+         }
          int selected = -1;
          float nearest = selectionRadius * selectionRadius;
          for (int i = 0; i < waypoints.Count; i++) {
@@ -542,6 +557,32 @@ namespace EpisodeWaypointColor {
          Debug("restored " + count + " waypoint(s)");
       }
 
+      // Debug only: lists every blip using a waypoint-style icon, so a leftover native waypoint
+      // drawn over one of our markers, or a colour the game did not accept, shows up in the log.
+      private void DumpWaypointBlips() {
+         BlipIcon icon = GetEpisodeIcon();
+         string text = "blips:";
+         int found = 0;
+         for (int type = 0; type < 10; type++) {
+            Blip[] blips = Blip.GetAllBlipsOfType((BlipType)type);
+            for (int i = 0; i < blips.Length; i++) {
+               Blip b = blips[i];
+               if (!b.Exists()) continue;
+               BlipIcon bi = b.Icon;
+               if (bi != BlipIcon.Misc_Waypoint && bi != icon) continue;
+               int owner = -1;
+               for (int w = 0; w < waypoints.Count; w++) if (waypoints[w].Blip.Equals(b)) owner = w;
+               int wanted = owner >= 0 ? ToNativeColor(waypoints[owner].Color) : 0;
+               text += " [" + (owner >= 0 ? "marker " + (owner + 1) : "NATIVE") +
+                  " h=" + ((GTA.@base.iHandleObject)b).Handle + " type=" + type + " icon=" + bi +
+                  " colour=" + ((int)b.Color).ToString("X8") + (owner >= 0 ? " wanted=" + wanted.ToString("X8") : "") +
+                  " pos=" + b.Position + "]";
+               found++;
+            }
+         }
+         Debug(found == 0 ? "blips: none" : text);
+      }
+
       private float HorizontalDistanceSquared(Vector3 a, Vector3 b) {
          float dx = a.X - b.X;
          float dy = a.Y - b.Y;
@@ -603,6 +644,10 @@ namespace EpisodeWaypointColor {
                saved.Configured = true;
             }
             if (dirty) SaveWaypoints();
+            if (debug && Environment.TickCount - lastDumpTick > 3000) {
+               lastDumpTick = Environment.TickCount;
+               DumpWaypointBlips();
+            }
          } catch (Exception ex) {
             if (Environment.TickCount - lastErrorTick >= 5000) {
                lastErrorTick = Environment.TickCount;
