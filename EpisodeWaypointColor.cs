@@ -42,7 +42,7 @@ namespace EpisodeWaypointColor {
       private BlipIcon iconTBOGT;
       private string colorPreset = "Episode";
       private float hueStepDegrees = 18.0f;
-      private float selectionRadius = 10.0f;
+      private float selectionRadius = 75.0f;
       private string logPath;
       private string persistPath;
       private bool persistPerEpisode = true;
@@ -153,7 +153,7 @@ namespace EpisodeWaypointColor {
          changed |= EnsureIniKey(lines, "General", "WaypointName", "Waypoint", "; Label shown on map/legend.");
          changed |= EnsureIniKey(lines, "General", "Persist", "false", "; If true, waypoints are saved to EpisodeWaypointColor_Waypoints.txt and restored on the next launch or script reload.");
          changed |= EnsureIniKey(lines, "General", "PersistPerEpisode", "true", "; If true, each episode keeps its own saved waypoints; if false, one shared list is used.");
-         changed |= EnsureIniKey(lines, "General", "SelectionRadius", "10", "; Clicking within this many horizontal meters of a saved waypoint removes it (1-100).");
+         changed |= EnsureIniKey(lines, "General", "SelectionRadius", "75", "; Clicking within this many horizontal meters of a saved waypoint removes it (1-250). Map clicks are imprecise, so keep this generous.");
          changed |= EnsureIniKey(lines, "Icons", "GTAIV", "Default", "; BlipIcon enum name, or Default to use General/WaypointIcon.");
          changed |= EnsureIniKey(lines, "Icons", "TLAD", "Default", null);
          changed |= EnsureIniKey(lines, "Icons", "TBOGT", "Default", null);
@@ -199,7 +199,7 @@ namespace EpisodeWaypointColor {
             colorPreset = "Episode";
          }
          hueStepDegrees = ReadRange("Colors", "HueStepDegrees", 18.0f, 1.0f, 60.0f);
-         selectionRadius = ReadRange("General", "SelectionRadius", 10.0f, 1.0f, 100.0f);
+         selectionRadius = ReadRange("General", "SelectionRadius", 75.0f, 1.0f, 250.0f);
          persist = Settings.GetValueBool("Persist", "General", false);
          bool wasPerEpisode = persistPerEpisode;
          persistPerEpisode = Settings.GetValueBool("PersistPerEpisode", "General", true);

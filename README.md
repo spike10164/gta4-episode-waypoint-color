@@ -20,7 +20,7 @@ WaypointIcon=Misc_Waypoint
 WaypointName=Waypoint
 Persist=false
 PersistPerEpisode=true
-SelectionRadius=10
+SelectionRadius=75
 [Icons]
 GTAIV=Default
 TLAD=Default
@@ -44,7 +44,7 @@ files automatically (no deletion needed).
 Legacy `Overlay`, `HideOriginal`, and `OverlayIcon` settings are no longer used.
 
 Placing a waypoint at a new location adds a marker without removing earlier markers.
-Placing a native waypoint within `SelectionRadius` horizontal metres (1-100) of an
+Placing a native waypoint within `SelectionRadius` horizontal metres (1-250, default 75; map clicks often land 50+ m off) of an
 existing marker removes the nearest one instead. This is a proximity-based toggle,
 not a direct hook into the map's selection event: it requires the game to create a
 native waypoint when you click. Click behaviour and zoom-dependent accuracy need
