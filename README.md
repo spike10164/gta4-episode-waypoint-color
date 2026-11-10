@@ -14,7 +14,6 @@ Debug=false
 ArrivalRadius=15
 RemoveOnArrival=true
 RouteEnabled=true
-UseNativeGps=true
 SplitRouteBlip=true
 RainbowMode=false
 RainbowCycleMs=2500
@@ -53,17 +52,7 @@ pause menu/map is open, so the replacement happens as soon as you return to the 
 The engine calculates a script blip's GPS route shortly after it is created, so the
 route can appear a moment later than the native one.
 
-### Native GPS (route, voice and map toggle)
-
-With `UseNativeGps=true` (default) the game's own waypoint is not deleted. Its icon is
-shrunk to zero and it is recoloured (the route line takes the routed blip's colour), and
-our coloured icon sits on top. The game keeps handling the route, the GPS voice in
-vehicles and clicking the waypoint off on the map; when the game clears its waypoint,
-our icon is removed too. Waypoints restored by `Persist` have no game waypoint behind
-them, so they use the script route below (no voice). Set `UseNativeGps=false` to delete
-the game's waypoint instead (previous behaviour).
-
-### Icons and route (when not using the native GPS)
+### Icons and route
 
 The game draws the icon of whichever blip has the GPS route in its fixed colour. With
 `SplitRouteBlip=true` (default) the visible icon has no route; a second, zero-size blip at
