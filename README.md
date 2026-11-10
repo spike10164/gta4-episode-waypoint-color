@@ -32,7 +32,7 @@ GTAIV=4FA3E0FF
 TLAD=C8102EFF
 TBOGT=FF2FB9FF
 ```
-Colors are `RRGGBBAA` hex; the script converts them to the ARGB layout the game expects.
+Colors are `RRGGBBAA` hex and are sent to the game unchanged.
 Settings reload approximately once per second.
 
 **Pause menu:** scripts do not run while the pause menu/map is open, so a waypoint

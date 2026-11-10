@@ -308,15 +308,10 @@ namespace EpisodeWaypointColor {
          return ((ClampByte(r) & 255) << 24) | ((ClampByte(g) & 255) << 16) | ((ClampByte(b) & 255) << 8) | (ClampByte(a) & 255);
       }
 
-      // Colours are kept as RRGGBBAA internally (the ini format), but the native takes packed ARGB,
-      // the same layout the API's own Blip.SetColorRGB uses. Preset indices 0-14 pass through.
+      // The game reads custom blip colours as RRGGBBAA, the same layout as the ini, so values pass
+      // through unchanged. (Converting to ARGB, as Blip.SetColorRGB does, turned blue into pink.)
       private static int ToNativeColor(int rgba) {
-         if (rgba >= 0 && rgba <= 14) return rgba;
-         int r = (rgba >> 24) & 255;
-         int g = (rgba >> 16) & 255;
-         int b = (rgba >> 8) & 255;
-         int a = rgba & 255;
-         return (a << 24) | (r << 16) | (g << 8) | b;
+         return rgba;
       }
 
       private int GetRainbowColor(int nowTick) {
